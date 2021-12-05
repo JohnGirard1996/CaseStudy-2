@@ -1,0 +1,156 @@
+---
+title: "Case Study 2"
+author: "John Girard"
+date: "12/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Case Study 2 
+
+#Summary "What leads to attrition. Fimd tjree factors that contribute highly to turnover"
+
+#install packages I need
+install.packages("corrplot")
+install.packages("inspectdf")
+install.packages("randomForest")
+install.packages("car")
+#set up packages
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(class)
+library(GGally)
+library(caret)
+library(e1071)
+library(knitr)
+library(grid)
+library(gridExtra)
+library(corrplot)
+library(inspectdf)
+library(randomForest)
+library(car)
+#load data
+getwd()
+list.files()
+Data <- read.csv("CS2Data.csv", header= TRUE)
+
+#DropColumns that I am not using
+
+Clean_Data <- Data %>% dplyr::select(Age,
+                                     Attrition,
+                                     BusinessTravel,
+                                     DailyRate,
+                                     Department,
+                                     DistanceFromHome,
+                                     Education,
+                                     EducationField,
+                                     EnvironmentSatisfaction,
+                                     Gender,
+                                     HourlyRate,
+                                     JobInvolvement,
+                                     JobLevel,
+                                     JobRole,
+                                     JobSatisfaction,
+                                     MaritalStatus,
+                                     MonthlyIncome,
+                                     MonthlyRate,
+                                     NumCompaniesWorked,
+                                     OverTime,
+                                     PercentSalaryHike,
+                                     PerformanceRating,
+                                     RelationshipSatisfaction,
+                                     StockOptionLevel,
+                                     TotalWorkingYears,
+                                     TrainingTimesLastYear,
+                                     WorkLifeBalance,
+                                     YearsAtCompany,
+                                     YearsInCurrentRole,
+                                     YearsSinceLastPromotion,
+                                     YearsWithCurrManager)
+
+#Look at attrition
+Clean_Data %>% ggplot(aes(x = Attrition, fill = Attrition)) + geom_bar()
+
+#HomeLife Glances
+Clean_Data %>% ggplot(aes(x= MaritalStatus)) + geom_bar() + theme_classic()
+
+#Observe Income
+Clean_Data %>% ggplot(aes(x = MonthlyIncome, fill = Attrition)) + geom_histogram()
+Clean_Data %>% ggplot(aes(x = HourlyRate)) + geom_histogram()
+Clean_Data %>% ggplot(aes(x = DailyRate)) + geom_histogram()
+Clean_Data %>% ggplot(aes(x = MonthlyRate)) + geom_histogram()
+Clean_Data %>% select('YearsWithCurrManager', 'JobLevel', 'OverTime', 'TotalWorkingYears', 'Age') %>% ggpairs(mapping = ggplot2::aes(x=MonthlyIncome))
+
+str("Annual")
+Clean_Data$Annual <- as.numeric(Clean_Data$Annual)
+class(Clean_Data$Annual)
+Clean_Data$AnnualIncome <- Clean_Data$MonthlyIncome * Clean_Data$Annual
+class(Clean_Data$AnnualIncome)
+#Attrition vs Annual Income, visualized
+Clean_Data %>% ggplot(aes(x = AnnualIncome, y= YearsAtCompany, color=Attrition)) + geom_violin() + facet_wrap(~Attrition)
+Clean_Data %>% ggplot(aes(x = AnnualIncome, y= YearsAtCompany, color=Attrition)) + geom_smooth(method = "lm")#Income does not give me a clear picture
+
+
+
+#set up train and test
+trainInd = createDataPartition(Clean_Data$Attrition, p = 0.67, list = F)
+train = Clean_Data[trainInd,]
+test = Clean_Data[-trainInd,]
+
+#NB
+NBModel <- naiveBayes(Attrition ~ ., data = train)
+NBPrediction <- predict(NBModel, test)
+confusionMatrix(table(NBPrediction,test$Attrition))
+head(NBModel)
+str(NBPrediction)
+#YearsWithCurrentManager stands out, but I think it's because it can signify that you havent moved within your department, 
+#overtime 55% of people who do overtime leave
+#MaritalStatus
+
+#Graph Attrition
+Clean_Data %>% ggplot(aes(x = PerformanceRating, y= YearsAtCompany, color=Attrition)) + geom_jitter() + facet_wrap(~Attrition)
+Clean_Data %>% ggplot(aes(x = OverTime,fill=Attrition)) + geom_bar() + facet_wrap(~Attrition) + ggtitle("Attrition and Overtime")
+Clean_Data %>% ggplot(aes(x = YearsWithCurrManager,y= Age, fill=Attrition)) + geom_jitter() + facet_wrap(~Attrition) + ggtitle("Attrition and Overtime")
+Clean_Data %>% ggplot(aes(x = Attrition, y = YearsWithCurrManager, fill=Attrition)) + geom_boxplot() + facet_wrap(~JobRole)
+
+
+#RMSE
+Clean_Data -> Salary_Data
+lm(MonthlyIncome ~ ., data = Salary_Data) -> Linear_Salary
+summary(Linear_Salary)
+vif(Linear_Salary)
+#Job Role and Department have VIF's over 100..... Wow
+#remove them
+New_Salary_Data = Salary_Data %>% select(-c('JobRole', "Department"))
+lm(MonthlyIncome ~ ., data = New_Salary_Data) -> New_Linear_Salary
+summary(New_Linear_Salary)
+vif(New_Linear_Salary)
+sqrt(mean(New_Linear_Salary$residuals^2))
+
+
+
+#Much better
+#RMSE pt 2
+train -> train5
+trainControl(method = "cv", number = 5) -> trainCrossVal
+
+train(MonthlyIncome ~ .,
+       data = New_Salary_Data,
+       method = "lm",
+       trControl = trainCrossVal
+       ) -> train5stepval
+
+vif(train5stepval)
+summary(train5stepval)
+
+
+#Monthly Income is dependent on Job Level as the highest (obviously), Years with Current Manager, Total Working Years,
+#(Why I Will not include Travel)
+
+#salary graphs
+Clean_Data %>% ggplot(aes(x = JobLevel, y = MonthlyIncome, color=JobLevel)) + geom_point() + facet_wrap(~JobRole)
+Clean_Data %>% ggplot(aes(x = TotalWorkingYears, y = MonthlyIncome, color=Attrition)) + geom_point()
+
